@@ -1,3 +1,6 @@
+If you want to help, here is my paypal : [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://paypal.me/sebpoirot)
+
+
 # aux AddOn
 
 The most advanced auction house addOn for the 3.3.5 client with some features more advanced than anything even on retail.
