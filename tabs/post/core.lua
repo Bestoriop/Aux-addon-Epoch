@@ -17,7 +17,32 @@ local al = require 'aux.gui.auction_listing'
 
 TAB 'Post'
 
-local DURATION_12, DURATION_24, DURATION_48 = 1, 2, 3
+-- Easy access discount adjuster 
+-- Figure out how to add a slash command for edits? -nehs
+local SERVER_DEPOSIT_DISCOUNT = 10
+
+-- Trimmed the 2/8 hour listings since they're unused
+-- Is this still necessary? Just use the duration codes directly -nehs
+local DURATION_12, DURATION_24, DURATION_48 = 720, 1440, 2880
+
+-- The original code didn't use the duration codes, which resulted 
+-- in many headaches over incorrect deposit calculations -nehs
+function get_duration_code(duration)
+    local duration_code = nil
+    if duration == DURATION_12 then
+        duration_code = 1
+    elseif duration == DURATION_24 then
+        duration_code = 2
+    elseif duration == DURATION_48 then
+        duration_code = 4
+    end
+    if duration_code then
+        return duration_code
+    else
+        print("Error:", duration)
+    end
+end
+
 
 local settings_schema = {'tuple', '#', {duration='number'}, {start_price='number'}, {buyout_price='number'}, {hidden='boolean'}}
 
@@ -215,14 +240,8 @@ function post_auctions()
         local duration = UIDropDownMenu_GetSelectedValue(duration_dropdown)
 		local key = selected_item.key
 
-        -- local duration_code
-		-- if duration == DURATION_2 then
-            -- duration_code = 2
-		-- elseif duration == DURATION_8 or duration == DURATION_12 then
-            -- duration_code = 3
-		-- elseif duration == DURATION_24 or duration == DURATION_48 then
-            -- duration_code = 4
-		-- end
+        -- This logic was moved to get_duration_code() -nehs
+        local duration_code = get_duration_code(duration)
 
 		post.start(
 			key,
@@ -233,7 +252,7 @@ function post_auctions()
 			stack_count,
 			function(posted)
 				for i = 1, posted do
-                    record_auction(key, stack_size, unit_start_price * stack_size, unit_buyout_price, duration + 1, UnitName'player')
+                    record_auction(key, stack_size, unit_start_price * stack_size, unit_buyout_price, duration_code, UnitName'player')
                 end
                 update_inventory_records()
 				local same
@@ -274,33 +293,6 @@ function validate_parameters()
     post_button:Enable()
 end
 
--- Cache pour stocker le dépôt déjà calculé
-local deposit_cache = {}
-
--- Fonction pour calculer le dépôt en utilisant l'AH
-local function compute_deposit(item, stack_size, duration)
-    local key = item.key .. ':' .. stack_size .. ':' .. duration
-    if deposit_cache[key] then
-        return deposit_cache[key]
-    end
-
-    local deposit_amount = 0
-    for slot in info.inventory do
-        local item_info = temp-info.container_item(unpack(slot))
-        if item_info and item_info.item_key == item.key and item_info.count >= stack_size then
-            ClearCursor()
-            PickupContainerItem(unpack(slot))
-            ClickAuctionSellItemButton()
-            deposit_amount = CalculateAuctionDeposit(duration) or 1 -- Au moins 1c si API renvoie 0
-            ClearCursor()
-            break
-        end
-    end
-
-    deposit_cache[key] = deposit_amount
-    return deposit_amount
-end
-
 function update_item_configuration()
     if not selected_item then
         refresh_button:Disable()
@@ -318,6 +310,7 @@ function update_item_configuration()
         duration_dropdown:Hide()
         hide_checkbox:Hide()
     else
+        -- Affiche tous les éléments
         unit_start_price_input:Show()
         unit_buyout_price_input:Show()
         stack_size_slider:Show()
@@ -326,33 +319,38 @@ function update_item_configuration()
         duration_dropdown:Show()
         hide_checkbox:Show()
 
+        -- Texture et nom de l’item
         item.texture:SetTexture(selected_item.texture)
         item.name:SetText('[' .. selected_item.name .. ']')
-        do
-            local color = ITEM_QUALITY_COLORS[selected_item.quality]
-            item.name:SetTextColor(color.r, color.g, color.b)
-        end
+        local color_item = ITEM_QUALITY_COLORS[selected_item.quality]
+        item.name:SetTextColor(color_item.r, color_item.g, color_item.b)
 
+        -- Quantité affichée
         if selected_item.aux_quantity > 1 then
             item.count:SetText(selected_item.aux_quantity)
         else
             item.count:SetText()
         end
 
+        -- Assure que les sliders ont des valeurs valides
+        local min_stack, max_stack = stack_size_slider:GetMinMaxValues()
+        if stack_size_slider:GetValue() < min_stack then
+            stack_size_slider:SetValue(min_stack)
+        elseif stack_size_slider:GetValue() > max_stack then
+            stack_size_slider:SetValue(max_stack)
+        end
+
         stack_size_slider.editbox:SetNumber(stack_size_slider:GetValue())
         stack_count_slider.editbox:SetNumber(stack_count_slider:GetValue())
 
-        -- Calcul et affichage du dépôt
-        local stack_size = selected_item.max_charges and 1 or stack_size_slider:GetValue()
-        local duration = UIDropDownMenu_GetSelectedValue(duration_dropdown)
-        local deposit_amount = compute_deposit(selected_item, stack_size, duration)
-
+        -- Mise à jour du dépôt : 1 silver par stack
+        local stack_count = stack_count_slider:GetValue() or 0
+        local deposit_amount = stack_count * 100  -- 100 copper = 1 silver
         deposit:SetText('Deposit: ' .. money.to_string(deposit_amount, nil, nil, color.text.enabled))
 
         refresh_button:Enable()
     end
 end
-
 
 
 
@@ -395,7 +393,6 @@ function unit_vendor_price(item_key)
         end
     end
 end
-
 
 function update_item(item)
 	CloseDropDownMenus()
