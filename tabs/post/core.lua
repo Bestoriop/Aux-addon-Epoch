@@ -274,8 +274,35 @@ function validate_parameters()
     post_button:Enable()
 end
 
+-- Cache pour stocker le dépôt déjà calculé
+local deposit_cache = {}
+
+-- Fonction pour calculer le dépôt en utilisant l'AH
+local function compute_deposit(item, stack_size, duration)
+    local key = item.key .. ':' .. stack_size .. ':' .. duration
+    if deposit_cache[key] then
+        return deposit_cache[key]
+    end
+
+    local deposit_amount = 0
+    for slot in info.inventory do
+        local item_info = temp-info.container_item(unpack(slot))
+        if item_info and item_info.item_key == item.key and item_info.count >= stack_size then
+            ClearCursor()
+            PickupContainerItem(unpack(slot))
+            ClickAuctionSellItemButton()
+            deposit_amount = CalculateAuctionDeposit(duration) or 1 -- Au moins 1c si API renvoie 0
+            ClearCursor()
+            break
+        end
+    end
+
+    deposit_cache[key] = deposit_amount
+    return deposit_amount
+end
+
 function update_item_configuration()
-	if not selected_item then
+    if not selected_item then
         refresh_button:Disable()
 
         item.texture:SetTexture(nil)
@@ -291,7 +318,7 @@ function update_item_configuration()
         duration_dropdown:Hide()
         hide_checkbox:Hide()
     else
-		unit_start_price_input:Show()
+        unit_start_price_input:Show()
         unit_buyout_price_input:Show()
         stack_size_slider:Show()
         stack_count_slider:Show()
@@ -301,30 +328,33 @@ function update_item_configuration()
 
         item.texture:SetTexture(selected_item.texture)
         item.name:SetText('[' .. selected_item.name .. ']')
-		do
-	        local color = ITEM_QUALITY_COLORS[selected_item.quality]
-	        item.name:SetTextColor(color.r, color.g, color.b)
+        do
+            local color = ITEM_QUALITY_COLORS[selected_item.quality]
+            item.name:SetTextColor(color.r, color.g, color.b)
         end
-		if selected_item.aux_quantity > 1 then
+
+        if selected_item.aux_quantity > 1 then
             item.count:SetText(selected_item.aux_quantity)
-		else
+        else
             item.count:SetText()
         end
 
         stack_size_slider.editbox:SetNumber(stack_size_slider:GetValue())
         stack_count_slider.editbox:SetNumber(stack_count_slider:GetValue())
 
-        do
-            local deposit_factor = UnitFactionGroup'npc' and .05 or .25
-            local duration_factor = UIDropDownMenu_GetSelectedValue(duration_dropdown) / 120
-            local stack_size, stack_count = selected_item.max_charges and 1 or stack_size_slider:GetValue(), stack_count_slider:GetValue()
-            local amount = floor(selected_item.unit_vendor_price * deposit_factor * stack_size) * stack_count * duration_factor
-            deposit:SetText('Deposit: ' .. money.to_string(amount, nil, nil, color.text.enabled))
-        end
+        -- Calcul et affichage du dépôt
+        local stack_size = selected_item.max_charges and 1 or stack_size_slider:GetValue()
+        local duration = UIDropDownMenu_GetSelectedValue(duration_dropdown)
+        local deposit_amount = compute_deposit(selected_item, stack_size, duration)
+
+        deposit:SetText('Deposit: ' .. money.to_string(deposit_amount, nil, nil, color.text.enabled))
 
         refresh_button:Enable()
-	end
+    end
 end
+
+
+
 
 function undercut(record, stack_size, stack)
     local price = ceil(record.unit_price * (stack and record.stack_size or stack_size))
@@ -365,6 +395,7 @@ function unit_vendor_price(item_key)
         end
     end
 end
+
 
 function update_item(item)
 	CloseDropDownMenus()
