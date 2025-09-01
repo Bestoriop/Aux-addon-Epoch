@@ -50,7 +50,7 @@ end
 
 function M.distribution(slot, quality, level)
     if not ARMOR[slot] and not WEAPON[slot] or level == 0 then
-        return {}
+        return T
     end
 
     local function p(probability_armor, probability_weapon)
@@ -177,5 +177,5 @@ function M.distribution(slot, quality, level)
             return temp-A(temp-O('item_id', 22450, 'min_quantity', 1, 'max_quantity', 2, 'probability', 1))
         end
     end
-    return {}
+    return T
 end
