@@ -17,32 +17,7 @@ local al = require 'aux.gui.auction_listing'
 
 TAB 'Post'
 
--- Easy access discount adjuster 
--- Figure out how to add a slash command for edits? -nehs
-local SERVER_DEPOSIT_DISCOUNT = 10
-
--- Trimmed the 2/8 hour listings since they're unused
--- Is this still necessary? Just use the duration codes directly -nehs
-local DURATION_12, DURATION_24, DURATION_48 = 720, 1440, 2880
-
--- The original code didn't use the duration codes, which resulted 
--- in many headaches over incorrect deposit calculations -nehs
-function get_duration_code(duration)
-    local duration_code = nil
-    if duration == DURATION_12 then
-        duration_code = 1
-    elseif duration == DURATION_24 then
-        duration_code = 2
-    elseif duration == DURATION_48 then
-        duration_code = 4
-    end
-    if duration_code then
-        return duration_code
-    else
-        print("Error:", duration)
-    end
-end
-
+local DURATION_12, DURATION_24, DURATION_48 = 1, 2, 3
 
 local settings_schema = {'tuple', '#', {duration='number'}, {start_price='number'}, {buyout_price='number'}, {hidden='boolean'}}
 
@@ -240,8 +215,14 @@ function post_auctions()
         local duration = UIDropDownMenu_GetSelectedValue(duration_dropdown)
 		local key = selected_item.key
 
-        -- This logic was moved to get_duration_code() -nehs
-        local duration_code = get_duration_code(duration)
+        -- local duration_code
+		-- if duration == DURATION_2 then
+            -- duration_code = 2
+		-- elseif duration == DURATION_8 or duration == DURATION_12 then
+            -- duration_code = 3
+		-- elseif duration == DURATION_24 or duration == DURATION_48 then
+            -- duration_code = 4
+		-- end
 
 		post.start(
 			key,
@@ -252,7 +233,7 @@ function post_auctions()
 			stack_count,
 			function(posted)
 				for i = 1, posted do
-                    record_auction(key, stack_size, unit_start_price * stack_size, unit_buyout_price, duration_code, UnitName'player')
+                    record_auction(key, stack_size, unit_start_price * stack_size, unit_buyout_price, duration + 1, UnitName'player')
                 end
                 update_inventory_records()
 				local same
@@ -310,7 +291,6 @@ function update_item_configuration()
         duration_dropdown:Hide()
         hide_checkbox:Hide()
     else
-        -- Affiche tous les éléments
         unit_start_price_input:Show()
         unit_buyout_price_input:Show()
         stack_size_slider:Show()
@@ -319,277 +299,41 @@ function update_item_configuration()
         duration_dropdown:Show()
         hide_checkbox:Show()
 
-        -- Texture et nom de l’item
         item.texture:SetTexture(selected_item.texture)
         item.name:SetText('[' .. selected_item.name .. ']')
-        local color_item = ITEM_QUALITY_COLORS[selected_item.quality]
-        item.name:SetTextColor(color_item.r, color_item.g, color_item.b)
-
-        -- Quantité affichée
+        do
+            local color = ITEM_QUALITY_COLORS[selected_item.quality]
+            item.name:SetTextColor(color.r, color.g, color.b)
+        end
         if selected_item.aux_quantity > 1 then
             item.count:SetText(selected_item.aux_quantity)
         else
             item.count:SetText()
         end
 
-        -- Assure que les sliders ont des valeurs valides
-        local min_stack, max_stack = stack_size_slider:GetMinMaxValues()
-        if stack_size_slider:GetValue() < min_stack then
-            stack_size_slider:SetValue(min_stack)
-        elseif stack_size_slider:GetValue() > max_stack then
-            stack_size_slider:SetValue(max_stack)
-        end
-
         stack_size_slider.editbox:SetNumber(stack_size_slider:GetValue())
         stack_count_slider.editbox:SetNumber(stack_count_slider:GetValue())
 
-        -- Mise à jour du dépôt : 1 silver par stack
-        local stack_count = stack_count_slider:GetValue() or 0
-        local deposit_amount = stack_count * 100  -- 100 copper = 1 silver
-        deposit:SetText('Deposit: ' .. money.to_string(deposit_amount, nil, nil, color.text.enabled))
+        local deposit_factor = UnitFactionGroup'npc' and 0.05 or 0.25
+        local duration_value = UIDropDownMenu_GetSelectedValue(duration_dropdown)
+        local duration_factor = duration_value and (duration_value / 120) or nil
+        local stack_size = selected_item.max_charges and 1 or stack_size_slider:GetValue()
+        local stack_count = stack_count_slider:GetValue()
+
+        -- Calcul sécurisé du dépôt avec minimum 1 silver par stack
+        local amount = 0
+        if selected_item.unit_vendor_price and duration_factor then
+            amount = floor(selected_item.unit_vendor_price * deposit_factor * stack_size) * stack_count * duration_factor
+            local min_deposit = 100 * stack_count -- 1 silver = 100 copper
+            if amount < min_deposit then
+                amount = min_deposit
+            end
+        else
+            amount = 100 * stack_count -- dépôt minimum si données manquantes
+        end
+
+        deposit:SetText('Deposit: ' .. money.to_string(amount, nil, nil, color.text.enabled))
 
         refresh_button:Enable()
     end
-end
-
-
-
-function undercut(record, stack_size, stack)
-    local price = ceil(record.unit_price * (stack and record.stack_size or stack_size))
-    if not record.own then
-	    price = price - 1
-    end
-    return price / stack_size
-end
-
-function quantity_update(maximize_count)
-    if selected_item then
-        local max_stack_count = selected_item.max_charges and selected_item.availability[stack_size_slider:GetValue()] or floor(selected_item.availability[0] / stack_size_slider:GetValue())
-        stack_count_slider:SetMinMaxValues(1, max_stack_count)
-        if maximize_count then
-            stack_count_slider:SetValue(max_stack_count)
-        end
-    end
-    refresh = true
-end
-
-function unit_vendor_price(item_key)
-    for slot in info.inventory do
-	    temp(slot)
-        local item_info = temp-info.container_item(unpack(slot))
-        if item_info and item_info.item_key == item_key then
-            if info.auctionable(item_info.tooltip, nil, true) and not item_info.lootable then
-                ClearCursor()
-                PickupContainerItem(unpack(slot))
-                ClickAuctionSellItemButton()
-                local auction_sell_item = temp-info.auction_sell_item()
-                ClearCursor()
-                ClickAuctionSellItemButton()
-                ClearCursor()
-                if auction_sell_item then
-                    return auction_sell_item.vendor_price / auction_sell_item.count
-                end
-            end
-        end
-    end
-end
-
-function update_item(item)
-	CloseDropDownMenus()
-
-    local settings = read_settings(item.key)
-
-    item.unit_vendor_price = unit_vendor_price(item.key)
-    if not item.unit_vendor_price then
-        settings.hidden = true
-        write_settings(settings, item.key)
-        refresh = true
-        return
-    end
-
-    scan.abort(scan_id)
-
-    selected_item = item
-
-    UIDropDownMenu_Initialize(duration_dropdown, initialize_duration_dropdown)
-    UIDropDownMenu_SetSelectedValue(duration_dropdown, settings.duration)
-
-    hide_checkbox:SetChecked(settings.hidden)
-
-    if selected_item.max_charges then
-	    for i = selected_item.max_charges, 1, -1 do
-			if selected_item.availability[i] > 0 then
-				stack_size_slider:SetMinMaxValues(1, i)
-				break
-			end
-	    end
-    else
-	    stack_size_slider:SetMinMaxValues(1, min(selected_item.max_stack, selected_item.aux_quantity))
-    end
-    stack_size_slider:SetValue(huge)
-    quantity_update(true)
-
-    unit_start_price_input:SetText(money.to_string(settings.start_price, true, nil, nil, true))
-    unit_buyout_price_input:SetText(money.to_string(settings.buyout_price, true, nil, nil, true))
-
-    if not bid_records[selected_item.key] then
-        refresh_entries()
-    end
-
-    write_settings(settings, item.key)
-
-    refresh = true
-end
-
-function update_inventory_records()
-    local auctionable_map = temp-T
-    for slot in info.inventory do
-	    temp(slot)
-	    local item_info = temp-info.container_item(unpack(slot))
-        if item_info then
-            local charge_class = item_info.charges or 0
-            if info.auctionable(item_info.tooltip, nil, true) and not item_info.lootable then
-                if not auctionable_map[item_info.item_key] then
-                    local availability = T
-                    for i = 0, 10 do
-                        availability[i] = 0
-                    end
-                    availability[charge_class] = item_info.count
-                    auctionable_map[item_info.item_key] = O(
-	                    'item_id', item_info.item_id,
-	                    'suffix_id', item_info.suffix_id,
-	                    'key', item_info.item_key,
-	                    'itemstring', item_info.itemstring,
-	                    'name', item_info.name,
-	                    'texture', item_info.texture,
-	                    'quality', item_info.quality,
-	                    'aux_quantity', item_info.charges or item_info.count,
-	                    'max_stack', item_info.max_stack,
-	                    'max_charges', item_info.max_charges,
-	                    'availability', availability
-                    )
-                else
-                    local auctionable = auctionable_map[item_info.item_key]
-                    auctionable.availability[charge_class] = (auctionable.availability[charge_class] or 0) + item_info.count
-                    auctionable.aux_quantity = auctionable.aux_quantity + (item_info.charges or item_info.count)
-                end
-            end
-        end
-    end
-    release(inventory_records)
-    inventory_records = values(auctionable_map)
-    refresh = true
-end
-
-function refresh_entries()
-	if selected_item then
-        local item_key = selected_item.key
-		bid_selection, buyout_selection = nil, nil
-        bid_records[item_key], buyout_records[item_key] = nil, nil
-        local query = scan_util.item_query(selected_item.item_id)
-        status_bar:update_status(0, 0)
-        status_bar:set_text('Scanning auctions...')
-
-		scan_id = scan.start{
-            type = 'list',
-            ignore_owner = true,
-			queries = A(query),
-			on_page_loaded = function(page, total_pages)
-                status_bar:update_status(page / total_pages, 0) -- TODO
-                status_bar:set_text(format('Scanning Page %d / %d', page, total_pages))
-			end,
-			on_auction = function(auction_record)
-				if auction_record.item_key == item_key then
-                    record_auction(
-                        auction_record.item_key,
-                        auction_record.aux_quantity,
-                        auction_record.unit_blizzard_bid,
-                        auction_record.unit_buyout_price,
-                        auction_record.duration,
-                        auction_record.owner
-                    )
-				end
-			end,
-			on_abort = function()
-				bid_records[item_key], buyout_records[item_key] = nil, nil
-                status_bar:update_status(1, 1)
-                status_bar:set_text('Scan aborted')
-			end,
-			on_complete = function()
-				bid_records[item_key] = bid_records[item_key] or T
-				buyout_records[item_key] = buyout_records[item_key] or T
-                refresh = true
-                status_bar:update_status(1, 1)
-                status_bar:set_text('Scan complete')
-            end,
-		}
-	end
-end
-
-function record_auction(key, aux_quantity, unit_blizzard_bid, unit_buyout_price, duration, owner)
-    bid_records[key] = bid_records[key] or T
-    do
-	    local entry
-	    for _, record in pairs(bid_records[key]) do
-	        if unit_blizzard_bid == record.unit_price and aux_quantity == record.stack_size and duration == record.duration and cache.is_player(owner) == record.own then
-	            entry = record
-	        end
-	    end
-	    if not entry then
-	        entry = O('stack_size', aux_quantity, 'unit_price', unit_blizzard_bid, 'duration', duration, 'own', cache.is_player(owner), 'count', 0)
-	        tinsert(bid_records[key], entry)
-	    end
-	    entry.count = entry.count + 1
-    end
-    buyout_records[key] = buyout_records[key] or T
-    if unit_buyout_price == 0 then return end
-    do
-	    local entry
-	    for _, record in pairs(buyout_records[key]) do
-		    if unit_buyout_price == record.unit_price and aux_quantity == record.stack_size and duration == record.duration and cache.is_player(owner) == record.own then
-			    entry = record
-		    end
-	    end
-	    if not entry then
-		    entry = O('stack_size', aux_quantity, 'unit_price', unit_buyout_price, 'duration', duration, 'own', cache.is_player(owner), 'count', 0)
-		    tinsert(buyout_records[key], entry)
-	    end
-	    entry.count = entry.count + 1
-    end
-end
-
-function on_update()
-    if refresh then
-        refresh = false
-        price_update()
-        update_item_configuration()
-        update_inventory_listing()
-        update_auction_listings()
-    end
-    validate_parameters()
-end
-
-function initialize_duration_dropdown()
-    local function on_click()
-        UIDropDownMenu_SetSelectedValue(duration_dropdown, this.value)
-        local settings = read_settings()
-        settings.duration = this.value
-        write_settings(settings)
-        refresh = true
-    end
-    UIDropDownMenu_AddButton{
-	    text = '12 Hours',
-	    value = DURATION_12,
-	    func = on_click,
-    }
-    UIDropDownMenu_AddButton{
-	    text = '24 Hours',
-	    value = DURATION_24,
-	    func = on_click,
-    }
-    UIDropDownMenu_AddButton{
-	    text = '48 Hours',
-	    value = DURATION_48,
-	    func = on_click,
-    }
 end
