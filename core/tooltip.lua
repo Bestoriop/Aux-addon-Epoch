@@ -55,6 +55,10 @@ function M.extend_tooltip(tooltip, link, quantity)
     local item_id, suffix_id = info.parse_link(link)
     quantity = IsShiftKeyDown() and quantity or 1
     local item_info = temp-info.item(item_id)
+
+-- AJOUT DE DEBUG
+    print(item_id, item_info and item_info.slot, item_info and item_info.quality, item_info and item_info.level)
+
     if item_info then
         local distribution = disenchant.distribution(item_info.slot, item_info.quality, item_info.level)
         if getn(distribution) > 0 then
