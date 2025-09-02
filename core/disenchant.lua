@@ -50,12 +50,12 @@ end
 
 function M.distribution(slot, quality, level)
     if not ARMOR[slot] and not WEAPON[slot] then
-        return T
+        return {}
     end
 
--- Fallback si level inconnu
+    -- Si le level n'est pas défini, on ne calcule pas la distribution
     if level == 0 then
-        level = item_info.reqLevel or 1
+        return {}
     end
 
     local function p(probability_armor, probability_weapon)
@@ -184,4 +184,5 @@ function M.distribution(slot, quality, level)
     end
     return {}
 end
+
 
