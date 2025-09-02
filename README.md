@@ -1,11 +1,10 @@
 If you want to help, here is my paypal : [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://paypal.me/sebpoirot)
 
 
-# changelog
+# changelog 01 september 2025
 
-* 01 september 2025 :
-  Deposit is now 1s minimum for each stack and scales on the vendor value (a bug made it always 0c)
-  Attempt to resolve the loss of disenchant value and disenchant distribution on some items
+* Deposit is now 1s minimum for each stack and scales on the vendor value (a bug made it always 0c)
+* Attempt to resolve the loss of disenchant value and disenchant distribution on some items
 
 # aux AddOn
 
