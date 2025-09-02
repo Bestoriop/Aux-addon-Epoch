@@ -14,6 +14,8 @@ local UNKNOWN = GRAY_FONT_COLOR_CODE .. '?' .. FONT_COLOR_CODE_CLOSE
 
 local game_tooltip_hooks, game_tooltip_money = {}, 0
 
+-- fix tooltip 020925
+
 function LOAD()
 	settings = character_data('tooltip', {value=true})
 	do
@@ -226,3 +228,5 @@ function game_tooltip_hooks:SetAuctionSellItem()
         end
     end
 end
+
+
