@@ -58,34 +58,50 @@ function M.extend_tooltip(tooltip, link, quantity)
     quantity = IsShiftKeyDown() and quantity or 1
     local item_info = temp-info.item(item_id)
 
-    if item_info then
-        local level = item_info.level
-
-        -- On n'affiche rien si le level n'est pas connu
-        if level > 0 then
-            local distribution = disenchant.distribution(item_info.slot, item_info.quality, level)
-            if getn(distribution) > 0 then
-                if settings.disenchant_distribution then
-                    tooltip:AddLine('Disenchants into:', color.tooltip.disenchant.distribution())
-                    sort(distribution, function(a,b) return a.probability > b.probability end)
-                    for _, event in ipairs(distribution) do
-                        tooltip:AddLine(format('  %s%% %s (%s-%s)',
-                            event.probability * 100,
-                            info.display_name(event.item_id, true) or 'item:' .. event.item_id,
-                            event.min_quantity,
-                            event.max_quantity),
-                            color.tooltip.disenchant.distribution())
+    local level
+    if item_info and item_info.level and item_info.level > 0 then
+        level = item_info.level
+    else
+        -- On lit le texte du tooltip pour récupérer "Item Level XX"
+        for i = 1, tooltip:NumLines() do
+            local line = _G[tooltip:GetName() .. "TextLeft" .. i]
+            if line then
+                local text = line:GetText()
+                if text then
+                    local lvl = text:match("Item Level (%d+)")
+                    if lvl then
+                        level = tonumber(lvl)
+                        break
                     end
-                end
-                if settings.disenchant_value then
-                    local disenchant_value = disenchant.value(item_info.slot, item_info.quality, level)
-                    tooltip:AddLine('Disenchant: ' .. (disenchant_value and money.to_string2(disenchant_value) or UNKNOWN),
-                        color.tooltip.disenchant.value())
                 end
             end
         end
     end
 
+    if item_info and level then
+        local distribution = disenchant.distribution(item_info.slot, item_info.quality, level)
+        if #distribution > 0 then
+            if settings.disenchant_distribution then
+                tooltip:AddLine('Disenchants into:', color.tooltip.disenchant.distribution())
+                table.sort(distribution, function(a,b) return a.probability > b.probability end)
+                for _, event in ipairs(distribution) do
+                    tooltip:AddLine(format('  %s%% %s (%s-%s)',
+                        event.probability * 100,
+                        info.display_name(event.item_id, true) or 'item:' .. event.item_id,
+                        event.min_quantity,
+                        event.max_quantity),
+                        color.tooltip.disenchant.distribution())
+                end
+            end
+            if settings.disenchant_value then
+                local disenchant_value = disenchant.value(item_info.slot, item_info.quality, level)
+                tooltip:AddLine('Disenchant: ' .. (disenchant_value and money.to_string2(disenchant_value) or UNKNOWN),
+                    color.tooltip.disenchant.value())
+            end
+        end
+    end
+
+    -- Le reste du tooltip (vendor, value, daily) reste inchangé
     if settings.merchant_buy then
         local _, price, limited = cache.merchant_info(item_id)
         if price then
@@ -121,6 +137,8 @@ function M.extend_tooltip(tooltip, link, quantity)
     end
     tooltip:Show()
 end
+
+
 
 function game_tooltip_hooks:SetHyperlink(itemstring)
     local name, _, quality = GetItemInfo(itemstring)
