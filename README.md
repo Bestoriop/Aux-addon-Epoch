@@ -7,6 +7,10 @@ The most advanced auction house addOn for the 3.3.5 client with some features mo
 
 ## Changelog
 
+### 3 september 2025
+
+* Disenchant value and distribution is now working on any item
+
 ### 2 september 2025
 
 * Deposit is now 1s minimum for each stack and scales on the vendor value (a bug made it always 0c)
